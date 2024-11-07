@@ -1,0 +1,58 @@
+schemaVersion: '0.3'
+assumeRole: arn:aws:iam::<YOUR ACCOUNT ID>:role/myssmrole(Your_role_name)
+description: Check for outdated Amazon EKS nodegroup images and flag them for updates
+parameters:
+  clusterNames:
+    type: StringList
+    description: List of EKS cluster names to check for outdated nodegroup images
+mainSteps:
+  - name: checkEKSImageUpdate
+    action: aws:executeScript
+    isEnd: true
+    inputs:
+      Runtime: python3.8
+      Handler: lambda_handler
+      Script: |
+        import boto3
+        import json
+
+        ec2_client = boto3.client('ec2')
+        eks_client = boto3.client('eks')
+
+        def get_current_image_id(cluster_name, nodegroup_name):
+            current_version = eks_client.describe_nodegroup(
+                clusterName=cluster_name, nodegroupName=nodegroup_name
+            )['nodegroup']['releaseVersion'][-8:]
+            return current_version
+
+        def get_latest_image_id():
+            latest_version = 0
+            images = ec2_client.describe_images(
+                Filters=[{'Name': 'name', 'Values': ['amazon-eks-node-1.29-*']}]
+            )['Images']
+            for image in images:
+                version = int(image['Name'][-8:])
+                if version > latest_version:
+                    latest_version = version
+            return latest_version
+
+        def lambda_handler(event, context):
+            to_be_updated = {}
+            cluster_names = event['clusterNames']
+
+            for cluster_name in cluster_names:
+                nodegroups = eks_client.list_nodegroups(clusterName=cluster_name)['nodegroups']
+                for nodegroup_name in nodegroups:
+                    current_version = get_current_image_id(cluster_name, nodegroup_name)
+                    latest_version = get_latest_image_id()
+
+                    if current_version != latest_version:
+                        to_be_updated.setdefault(cluster_name, []).append(nodegroup_name)
+                        
+            return json.dumps(to_be_updated)  # Convert dictionary to JSON string
+      InputPayload:
+        clusterNames: '{{ clusterNames }}'
+    outputs:
+      - Name: to_be_updated
+        Selector: $.Payload
+        Type: String
