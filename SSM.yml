@@ -1,3 +1,5 @@
+#A seprate code for listing nodegroups which needs to be updated (AMI version) & Python boto3 lambda code converted in AWS SSM Docs
+
 schemaVersion: '0.3'
 assumeRole: arn:aws:iam::<YOUR ACCOUNT ID>:role/myssmrole(Your_role_name)
 description: Check for outdated Amazon EKS nodegroup images and flag them for updates
